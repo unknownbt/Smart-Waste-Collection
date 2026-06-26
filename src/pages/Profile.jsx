@@ -7,7 +7,7 @@ import {
   FaChartLine,
   FaArrowLeft,
 } from "react-icons/fa";
-
+import { supabase } from "../supabaseClient";
 import "./Profile.css";
 
 const Profile = () => {
@@ -38,9 +38,16 @@ const Profile = () => {
 
   useEffect(() => {
 
-    fetch("http://localhost:5000/orders")
-      .then((res) => res.json())
-      .then((data) => setOrders(data));
+    const fetchOrders = async () => {
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error) setOrders(data || []);
+    };
+
+    fetchOrders();
 
   }, []);
 
@@ -74,43 +81,37 @@ const Profile = () => {
 
     try {
 
-      const res = await fetch(
-        "http://localhost:5000/updateProfile",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            email: user.email,
-            ...profileData
-          })
-        }
-      );
+      const { data: updated, error } = await supabase
+        .from("users")
+        .update({
+          name: profileData.fullName || user.name,
+          fullName: profileData.fullName,
+          phone: profileData.phone,
+          address: profileData.address,
+          city: profileData.city,
+          state: profileData.state,
+          pincode: profileData.pincode,
+          bankName: profileData.bankName,
+          accountNumber: profileData.accountNumber,
+          ifsc: profileData.ifsc,
+          upi: profileData.upi,
+        })
+        .eq("email", user.email)
+        .select()
+        .single();
 
-      const result = await res.json();
-
-      if (result.success) {
-
-        localStorage.setItem(
-          "user",
-          JSON.stringify(result.user)
-        );
-
-        alert("Profile Saved Successfully ✅");
-
-      } else {
-
+      if (error) {
         alert("Failed To Save ❌");
-
+        return;
       }
 
+      localStorage.setItem("user", JSON.stringify(updated));
+
+      alert("Profile Saved Successfully ✅");
+
     } catch (err) {
-
       console.log(err);
-
       alert("Server Error ❌");
-
     }
   };
 
@@ -158,47 +159,47 @@ const Profile = () => {
 
             <div className="menu">
 
-  <div
-    className={`menu-item ${activeTab === "overview" ? "active" : ""}`}
-    onClick={() => setActiveTab("overview")}
-  >
-    <span>📊</span>
-    <span>Overview</span>
-  </div>
+              <div
+                className={`menu-item ${activeTab === "overview" ? "active" : ""}`}
+                onClick={() => setActiveTab("overview")}
+              >
+                <span>📊</span>
+                <span>Overview</span>
+              </div>
 
-  <div
-    className={`menu-item ${activeTab === "profile" ? "active" : ""}`}
-    onClick={() => setActiveTab("profile")}
-  >
-    <span>👤</span>
-    <span>Personal Details</span>
-  </div>
+              <div
+                className={`menu-item ${activeTab === "profile" ? "active" : ""}`}
+                onClick={() => setActiveTab("profile")}
+              >
+                <span>👤</span>
+                <span>Personal Details</span>
+              </div>
 
-  <div
-    className={`menu-item ${activeTab === "orders" ? "active" : ""}`}
-    onClick={() => setActiveTab("orders")}
-  >
-    <span>📦</span>
-    <span>Orders</span>
-  </div>
+              <div
+                className={`menu-item ${activeTab === "orders" ? "active" : ""}`}
+                onClick={() => setActiveTab("orders")}
+              >
+                <span>📦</span>
+                <span>Orders</span>
+              </div>
 
-  <div
-    className={`menu-item ${activeTab === "payments" ? "active" : ""}`}
-    onClick={() => setActiveTab("payments")}
-  >
-    <span>💳</span>
-    <span>Payments</span>
-  </div>
+              <div
+                className={`menu-item ${activeTab === "payments" ? "active" : ""}`}
+                onClick={() => setActiveTab("payments")}
+              >
+                <span>💳</span>
+                <span>Payments</span>
+              </div>
 
-  <div
-    className={`menu-item ${activeTab === "analytics" ? "active" : ""}`}
-    onClick={() => setActiveTab("analytics")}
-  >
-    <span>📈</span>
-    <span>Analytics</span>
-  </div>
+              <div
+                className={`menu-item ${activeTab === "analytics" ? "active" : ""}`}
+                onClick={() => setActiveTab("analytics")}
+              >
+                <span>📈</span>
+                <span>Analytics</span>
+              </div>
 
-</div>
+            </div>
 
           </div>
 

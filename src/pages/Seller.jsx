@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaUserCircle } from "react-icons/fa";
+import { supabase } from "../supabaseClient";
 import "./Seller.css";
 
 const Seller = () => {
@@ -65,56 +66,39 @@ const Seller = () => {
 
   // ================= PLACE ORDER =================
 
-const placeOrder = async () => {
+  const placeOrder = async () => {
 
-  const user = JSON.parse(localStorage.getItem("user"));
+    const user = JSON.parse(localStorage.getItem("user"));
 
-  const res = await fetch("http://localhost:5000/sell", {
+    try {
 
-    method: "POST",
+      const { error } = await supabase
+        .from("scraps")
+        .insert({
+          sellerName: user.name,
+          sellerEmail: user.email,
+          scrap: items.map(i => i.category).join(", "),
+          quantity: items.map(i => i.weight).join(", "),
+          price: totalPrice,
+          platformFee,
+          sellerGets,
+          address: user.address || "",
+        });
 
-    headers: {
-      "Content-Type": "application/json",
-    },
+      if (error) {
+        console.log(error);
+        alert("Something went wrong ❌");
+        return;
+      }
 
-    body: JSON.stringify({
+      alert("Order placed successfully ✅");
+      navigate("/SellerOrders");
 
-      sellerName: user.name,
-
-      sellerEmail: user.email,
-
-      scrap: items.map(i => i.category).join(", "),
-
-      quantity: items.map(i => i.weight).join(", "),
-
-      price: totalPrice,
-
-      platformFee,
-
-      sellerGets,
-
-      status: "pending",
-
-      createdAt: new Date(),
-
-    }),
-
-  });
-
-  const data = await res.json();
-
-  if (data.success) {
-
-    alert("Order placed successfully ✅");
-
-    navigate("/SellerOrders");
-
-  } else {
-
-    alert("Something went wrong ❌");
-
-  }
-};
+    } catch (err) {
+      console.log(err);
+      alert("Something went wrong ❌");
+    }
+  };
 
   return (
 

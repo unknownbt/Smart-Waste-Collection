@@ -1,5 +1,6 @@
 import { useState } from "react";
 import "./LoginModal.css";
+import { supabase } from "../supabaseClient";
 
 const LoginModal = ({ close }) => {
 
@@ -30,59 +31,37 @@ const LoginModal = ({ close }) => {
 
     try {
 
-      const res = await fetch("http://localhost:5000/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: data.email,
-          password: data.password,
-        }),
-      });
+      // Check user in our custom users table (custom auth, not Supabase Auth)
+      const { data: users, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("email", data.email)
+        .eq("password", data.password)
+        .single();
 
-      const result = await res.json();
-
-      if (result.success) {
-
-        localStorage.setItem(
-          "user",
-          JSON.stringify(result.user)
-        );
-
-        localStorage.setItem(
-          "role",
-          result.user.role
-        );
-
-        alert("Login Success ✅");
-
-        // 🔥 ROLE BASED REDIRECT
-        if (
-  result.user.role === "seller" ||
-  result.user.role === "startup"
-) {
-
-  window.location.href = "/seller";
-
-} else {
-
-  window.location.href = "/buyer";
-
-}
-
-      } else {
-
+      if (error || !users) {
         alert("Invalid Credentials ❌");
+        return;
+      }
 
+      localStorage.setItem("user", JSON.stringify(users));
+      localStorage.setItem("role", users.role);
+
+      alert("Login Success ✅");
+
+      // 🔥 ROLE BASED REDIRECT
+      if (
+        users.role === "seller" ||
+        users.role === "startup"
+      ) {
+        window.location.href = "/seller";
+      } else {
+        window.location.href = "/buyer";
       }
 
     } catch (err) {
-
       console.log(err);
-
-      alert("Server Error ❌");
-
+      alert("Error ❌");
     }
   };
 
@@ -101,34 +80,39 @@ const LoginModal = ({ close }) => {
 
     try {
 
-      const res = await fetch("http://localhost:5000/signup", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(data),
-      });
+      // Check if user already exists
+      const { data: existing } = await supabase
+        .from("users")
+        .select("id")
+        .eq("email", data.email)
+        .single();
 
-      const result = await res.json();
-
-      if (result.success) {
-
-        alert("Signup Success 🎉");
-
-        setLogin(true);
-
-      } else {
-
-        alert(result.message || "Signup Failed ❌");
-
+      if (existing) {
+        alert("User already exists ❌");
+        return;
       }
 
+      // Insert new user
+      const { error } = await supabase
+        .from("users")
+        .insert({
+          name: data.name,
+          email: data.email,
+          password: data.password,
+          role: data.role,
+        });
+
+      if (error) {
+        alert(error.message || "Signup Failed ❌");
+        return;
+      }
+
+      alert("Signup Success 🎉");
+      setLogin(true);
+
     } catch (err) {
-
       console.log(err);
-
-      alert("Server Error ❌");
-
+      alert("Error ❌");
     }
   };
 
@@ -208,7 +192,7 @@ const LoginModal = ({ close }) => {
         <p className="auth-switch">
 
           {login
-            ? "Don’t have an account?"
+            ? "Don't have an account?"
             : "Already have an account?"}
 
           <span onClick={() => setLogin(!login)}>

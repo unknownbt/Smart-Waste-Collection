@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { supabase } from "../supabaseClient";
 import "./Orders.css";
 
 const Orders = () => {
@@ -10,34 +11,41 @@ const Orders = () => {
 
   const user = JSON.parse(localStorage.getItem("user"));
 
+  const fetchOrders = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("buyerEmail", user.email)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.log(error);
+      return;
+    }
+
+    setOrders(data || []);
+  };
+
   useEffect(() => {
-
-    const fetchOrders = () => {
-
-      fetch("http://localhost:5000/orders")
-        .then((res) => res.json())
-        .then((data) => {
-
-          const buyerOrders = data.filter(
-            (o) => o.buyerEmail === user.email
-          );
-
-          setOrders(buyerOrders);
-
-        });
-
-    };
-
     fetchOrders();
 
-    const interval = setInterval(() => {
+    // ================= SUPABASE REALTIME =================
+    const channel = supabase
+      .channel("orders-buyer-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        () => {
+          fetchOrders();
+        }
+      )
+      .subscribe();
 
-      fetchOrders();
-
-    }, 2000);
-
-    return () => clearInterval(interval);
-
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
@@ -73,7 +81,7 @@ const Orders = () => {
 
           orders.map((o, i) => (
 
-            <div className="order-card" key={i}>
+            <div className="order-card" key={o.id}>
 
               {/* TOP */}
 
@@ -165,13 +173,12 @@ const Orders = () => {
 
                   {/* SELLER ACCEPTED */}
 
-                  <div className={`track ${
-                    o.status?.toLowerCase() === "accepted" ||
+                  <div className={`track ${o.status?.toLowerCase() === "accepted" ||
                     o.status?.toLowerCase() === "picked" ||
                     o.status?.toLowerCase() === "completed"
                     ? "active"
                     : ""
-                  }`}>
+                    }`}>
 
                     <div className="circle">✓</div>
 
@@ -181,12 +188,11 @@ const Orders = () => {
 
                   {/* COLLECTOR COMING */}
 
-                  <div className={`track ${
-                    o.status?.toLowerCase() === "picked" ||
+                  <div className={`track ${o.status?.toLowerCase() === "picked" ||
                     o.status?.toLowerCase() === "completed"
                     ? "active"
                     : ""
-                  }`}>
+                    }`}>
 
                     <div className="circle">🚚</div>
 
@@ -196,11 +202,10 @@ const Orders = () => {
 
                   {/* COMPLETED */}
 
-                  <div className={`track ${
-                    o.status?.toLowerCase() === "completed"
+                  <div className={`track ${o.status?.toLowerCase() === "completed"
                     ? "active"
                     : ""
-                  }`}>
+                    }`}>
 
                     <div className="circle">₹</div>
 
@@ -270,11 +275,11 @@ const Orders = () => {
               <div className="order-buttons">
 
                 <button
-  className="secondary-btn"
-  onClick={() => navigate(`/order-details/${o._id}`)}
->
-  View Details
-</button>
+                  className="secondary-btn"
+                  onClick={() => navigate(`/order-details/${o.id}`)}
+                >
+                  View Details
+                </button>
 
                 {o.status?.toLowerCase() === "picked" && (
 

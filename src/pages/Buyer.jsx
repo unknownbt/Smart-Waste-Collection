@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FaUserCircle } from "react-icons/fa";
-import { io } from "socket.io-client";
+import { supabase } from "../supabaseClient";
 import "./Buyer.css";
 
 const Buyer = () => {
@@ -29,46 +29,44 @@ const Buyer = () => {
 
   // ================= LOAD ITEMS =================
 
-  const loadItems = () => {
+  const loadItems = async () => {
+    const { data, error } = await supabase
+      .from("scraps")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    fetch("http://localhost:5000/items")
-      .then((res) => res.json())
-      .then((data) => {
+    if (error) {
+      console.log(error);
+      return;
+    }
 
-        if (Array.isArray(data)) {
-
-          setItems(data);
-
-          setFiltered(data);
-
-        }
-
-      })
-      .catch((err) => console.log(err));
+    setItems(data || []);
+    setFiltered(data || []);
   };
 
   // ================= FIRST LOAD =================
 
   useEffect(() => {
-
     loadItems();
-
   }, []);
 
-  // ================= SOCKET LIVE UPDATE =================
+  // ================= SUPABASE REALTIME =================
 
   useEffect(() => {
+    const channel = supabase
+      .channel("scraps-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "scraps" },
+        () => {
+          loadItems();
+        }
+      )
+      .subscribe();
 
-    const socket = io("http://localhost:5000");
-
-    socket.on("orderUpdated", () => {
-
-      loadItems();
-
-    });
-
-    return () => socket.disconnect();
-
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   // ================= FILTER LOGIC =================
@@ -99,84 +97,49 @@ const Buyer = () => {
 
   // ================= BUY FUNCTION =================
 
-const buyItem = async (item) => {
+  const buyItem = async (item) => {
 
-  console.log(item);
+    console.log(item);
 
-  const res = await fetch(
-    "http://localhost:5000/buy",
-    {
-      method: "POST",
+    // Spread coordinates slightly near Delhi for demo mapping
+    const destLat = 28.6139 + (Math.random() - 0.5) * 0.04;
+    const destLng = 77.2090 + (Math.random() - 0.5) * 0.04;
 
-      headers: {
-        "Content-Type": "application/json",
-      },
-
-      body: JSON.stringify({
-
-        // ================= SELLER =================
-
-        sellerName:
-          item.name || item.sellerName,
-
-        sellerEmail:
-          item.email || item.sellerEmail,
-
-        // ================= BUYER =================
-
+    const { error } = await supabase
+      .from("orders")
+      .insert({
+        sellerName: item.sellerName,
+        sellerEmail: item.sellerEmail,
         buyerName: user.name,
-
         buyerEmail: user.email,
-
-        // ================= SCRAP =================
-
         scrap: item.scrap,
-
         quantity: item.quantity,
-
-        // ================= MONEY =================
-
         price: item.price,
-
-        platformFee:
-          item.platformFee || 0,
-
-        sellerGets:
-          item.sellerGets || item.price,
-
+        platformFee: item.platformFee || 0,
+        sellerGets: item.sellerGets || item.price,
         finalAmount:
           Number(item.price) +
           Number(item.platformFee || 0),
-
-        // ================= STATUS =================
-
         status: "Pending",
-
         acceptedBy: "",
-
         paymentDone: false,
+        locationCoords: { lat: destLat, lng: destLng },
+        collectorCoords: {
+          lat: destLat + (Math.random() > 0.5 ? 0.015 : -0.015),
+          lng: destLng + (Math.random() > 0.5 ? 0.015 : -0.015),
+        },
+      });
 
-      }),
+    if (error) {
+      console.log(error);
+      alert("Something went wrong ❌");
+      return;
     }
-  );
-
-  const data = await res.json();
-
-  if (data.success) {
 
     alert("Order Placed Successfully ✅");
-
     loadItems();
-
     navigate("/orders");
-
-  } else {
-
-    alert("Something went wrong ❌");
-
-  }
-
-};
+  };
 
   return (
 
@@ -308,7 +271,7 @@ const buyItem = async (item) => {
               {filtered.map((item) => (
 
                 <div
-                  key={item._id}
+                  key={item.id}
                   className="card"
                 >
 

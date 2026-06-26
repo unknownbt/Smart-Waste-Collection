@@ -40,6 +40,16 @@ const User = mongoose.model(
     email: String,
     password: String,
     role: String,
+    fullName: String,
+    phone: String,
+    address: String,
+    city: String,
+    state: String,
+    pincode: String,
+    bankName: String,
+    accountNumber: String,
+    ifsc: String,
+    upi: String,
   })
 );
 
@@ -50,15 +60,13 @@ const Scrap = mongoose.model(
     {
       sellerName: String,
       sellerEmail: String,
-
       scrap: String,
       quantity: String,
-
       price: Number,
       platformFee: Number,
       sellerGets: Number,
-
       image: String,
+      address: String,
     },
     { collection: "scraps" }
   )
@@ -88,10 +96,22 @@ const Order = mongoose.model(
         default: "Pending",
       },
       acceptedBy: String,
-paymentDone: {
-  type: Boolean,
-  default: false,
-},
+      paymentDone: {
+        type: Boolean,
+        default: false,
+      },
+      location: {
+        type: String,
+        default: "Collector on the way",
+      },
+      locationCoords: {
+        lat: { type: Number, default: 28.6139 },
+        lng: { type: Number, default: 77.2090 },
+      },
+      collectorCoords: {
+        lat: { type: Number },
+        lng: { type: Number },
+      },
     },
     { collection: "orders" }
   )
@@ -164,6 +184,69 @@ app.post("/login", async (req, res) => {
   }
 });
 
+// ================= UPDATE PROFILE =================
+app.post("/updateProfile", async (req, res) => {
+  try {
+    const {
+      email,
+      fullName,
+      phone,
+      address,
+      city,
+      state,
+      pincode,
+      bankName,
+      accountNumber,
+      ifsc,
+      upi,
+    } = req.body;
+
+    const user = await User.findOneAndUpdate(
+      { email },
+      {
+        name: fullName || req.body.name,
+        fullName,
+        phone,
+        address,
+        city,
+        state,
+        pincode,
+        bankName,
+        accountNumber,
+        ifsc,
+        upi,
+      },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.json({ success: false, message: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        fullName: user.fullName,
+        phone: user.phone,
+        address: user.address,
+        city: user.city,
+        state: user.state,
+        pincode: user.pincode,
+        bankName: user.bankName,
+        accountNumber: user.accountNumber,
+        ifsc: user.ifsc,
+        upi: user.upi,
+      },
+    });
+  } catch (err) {
+    console.log(err);
+    res.json({ success: false });
+  }
+});
+
 // ================= SELL SCRAP =================
 app.post("/sell", async (req, res) => {
   try {
@@ -178,6 +261,7 @@ app.post("/sell", async (req, res) => {
       price: req.body.price,
       platformFee: req.body.platformFee,
       sellerGets: req.body.sellerGets,
+      address: req.body.address,
     });
 
     await scrap.save();
@@ -208,6 +292,10 @@ app.post("/buy", async (req, res) => {
 
   try {
 
+    // Spread coordinates slightly near Delhi for demo mapping
+    const destLat = 28.6139 + (Math.random() - 0.5) * 0.04;
+    const destLng = 77.2090 + (Math.random() - 0.5) * 0.04;
+
     const order = new Order({
 
       sellerName: req.body.sellerName,
@@ -237,6 +325,16 @@ app.post("/buy", async (req, res) => {
       paymentDone: false,
 
       createdAt: new Date(),
+
+      locationCoords: {
+        lat: destLat,
+        lng: destLng,
+      },
+
+      collectorCoords: {
+        lat: destLat + (Math.random() > 0.5 ? 0.015 : -0.015),
+        lng: destLng + (Math.random() > 0.5 ? 0.015 : -0.015),
+      },
 
     });
 
@@ -276,12 +374,17 @@ app.put("/order-status/:id", async (req, res) => {
 
   try {
 
+    const updateFields = {
+      status: req.body.status,
+    };
+    if (req.body.location) {
+      updateFields.location = req.body.location;
+    }
+
     const updatedOrder =
       await Order.findByIdAndUpdate(
         req.params.id,
-        {
-          status: req.body.status,
-        },
+        updateFields,
         {
           new: true,
         }
@@ -332,6 +435,23 @@ app.delete("/delete/:id", async (req, res) => {
   }
 });
 
+// ================= GET MESSAGES =================
+app.get("/messages/:from/:to", async (req, res) => {
+  try {
+    const { from, to } = req.params;
+    const history = await Message.find({
+      $or: [
+        { from, to },
+        { from: to, to: from },
+      ],
+    }).sort({ createdAt: 1 });
+    res.json(history);
+  } catch (err) {
+    console.log(err);
+    res.json([]);
+  }
+});
+
 // ================= CHAT SYSTEM =================
 let users = {};
 
@@ -341,6 +461,20 @@ io.on("connection", (socket) => {
 
   socket.on("join", (email) => {
     users[email] = socket.id;
+  });
+
+  socket.on("updateLocation", async ({ orderId, lat, lng }) => {
+    try {
+      await Order.findByIdAndUpdate(
+        orderId,
+        {
+          collectorCoords: { lat, lng }
+        }
+      );
+      io.emit("locationUpdated", { orderId, lat, lng });
+    } catch (err) {
+      console.log("Error updating socket location:", err);
+    }
   });
 
   socket.on("sendMessage", async ({ to, message, from }) => {
